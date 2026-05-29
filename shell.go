@@ -106,25 +106,24 @@ func updateShellConfig(configFile, shellType string) {
 
 	// Skip if already configured
 	if hasNpmAlias && hasPnpmAlias {
-		fmt.Printf("✓ pnpm and npm aliases already present in %s.\n", configFile)
+		fmt.Printf("✓ pnpm and npm aliases already present in %s\n", configFile)
 		return
 	}
 
 	// Check if pnpm and npm commands exist in PATH
-	_, err := exec.LookPath("pnpm")
-	hasPnpm := err == nil
-	_, err = exec.LookPath("npm")
-	hasNpm := err == nil
+	hasPnpm := commandExists("pnpm")
+	hasNpm := commandExists("npm")
 
 	if !hasPnpm && !hasNpm {
+		fmt.Fprintln(os.Stderr, "⚠️  Neither pnpm nor npm found in PATH. Aliases not added.")
 		return
 	}
 
 	// Prepare alias lines based on shell syntax
-	var lines []string
+	var aliases []string
 	if hasPnpmAlias {
 		if hasPnpm {
-			lines = append(lines, `alias pnpm="esbuilds pnpm"`)
+			aliases = append(aliases, `alias pnpm="esbuilds pnpm"`)
 		}
 	} else {
 		fmt.Printf("✓ Found pnpm alias in %s. Skipping.\n", configFile)
@@ -132,17 +131,17 @@ func updateShellConfig(configFile, shellType string) {
 
 	if hasNpmAlias {
 		if hasNpm {
-			lines = append(lines, `alias npm="esbuilds npm"`)
+			aliases = append(aliases, `alias npm="esbuilds npm"`)
 		}
 	} else {
 		fmt.Printf("✓ Found npm alias in %s. Skipping.\n", configFile)
 	}
 
-	if len(lines) == 0 {
+	if len(aliases) == 0 {
 		return
 	}
 
-	// Ensure parent directory exists (important for fish config)
+	// Ensure directory exists (important for fish config)
 	dir := filepath.Dir(configFile)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", dir, err)
@@ -150,10 +149,50 @@ func updateShellConfig(configFile, shellType string) {
 	}
 
 	// Open file for appending (create if doesn't exist)
-	f, err := os.OpenFile(configFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	err := appendAliases(configFile, aliases);
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error updating %s: %v\n", configFile, err)
+		return
+	}
+
+	fmt.Printf("✓ Updated %s with esbuilds aliases\n", configFile)
+}
+
+func checkAliases(configFile string) (hasPnpm, hasNpm bool) {
+		file, err := os.Open(configFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening config file %s: %v\n", configFile, err)
+			return false, false
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(line, `alias pnpm="esbuilds pnpm"`) {
+				hasPnpm = true
+			}
+			if strings.Contains(line, `alias npm="esbuilds npm"`) {
+				hasNpm = true
+			}
+		}
+		
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading config file %s: %v\n", configFile, err)
+		}
+		return hasPnpm, hasNpm
+}
+
+func commandExists(cmd string) bool {
+	_, err := exec.LookPath(cmd)
+	return err == nil
+}
+
+func appendAliases(configFile string, aliases []string) error {
+		f, err := os.OpenFile(configFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening config file for writing %s: %v\n", configFile, err)
-		return
+		return err
 	}
 	defer f.Close()
 
@@ -161,19 +200,18 @@ func updateShellConfig(configFile, shellType string) {
 	if stat, err := os.Stat(configFile); err == nil && stat.Size() > 0 {
 		if _, err := f.WriteString("\n"); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing newline to config file: %v\n", err)
-			return
+			return err
 		}
 	}
 
 	// Write alias lines
-	for _, line := range lines {
-		if _, err := f.WriteString(line + "\n"); err != nil {
+	for _, alias := range aliases {
+		if _, err := f.WriteString(alias + "\n"); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing alias to config file: %v\n", err)
-			return
+			return err
 		}
 	}
-
-	fmt.Printf("✓ Updated %s with esbuilds aliases\n", configFile)
+	return nil
 }
 
 func setupEnv(binaryPath string) []string {
