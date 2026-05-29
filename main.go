@@ -13,6 +13,11 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "init" {
+		initShell()
+		return
+	}
+
 	start := time.Now()
 
 	homeDir, err := os.UserHomeDir()
@@ -22,7 +27,7 @@ func main() {
 	}
 
 	pm, pmArgs := resolvePackageManager()
-	if pm == "" {	
+	if pm == "" {
 		if len(os.Args) > 1 {
 			fmt.Fprintf(os.Stderr, "Unknown command or package manager: %s\n", os.Args[1])
 		}
