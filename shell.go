@@ -7,30 +7,22 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-func initShell() {
-	var shellName string
-	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "Usage: esbuilds init [bash|zsh|fish]")
-		return
-	}
-
-	if os.Args[2] == "bash" || os.Args[2] == "zsh" || os.Args[2] == "fish" {
-		shellName = os.Args[2]
-	} else {
-		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n. Supported shells are: bash, zsh, fish.\n", os.Args[2])
-		return
-	}
-
-	if shellName == "bash" {
+func initShell(cmd *cobra.Command, args []string) {
+	shellName := args[0]
+	switch shellName {
+	case "bash":
 		initBash()
-	} else if shellName == "zsh" {
+	case "zsh":
 		initZsh()
-	} else if shellName == "fish" {
+	case "fish":
 		initFish()
-	} else {
-		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\n. Supported shells are: bash, zsh, fish.\n", shellName)
+	default:
+		fmt.Fprintf(os.Stderr, "Unsupported shell: %s\nSupported shells are: bash, zsh, fish\n", shellName)
+		os.Exit(1)
 	}
 }
 
@@ -182,4 +174,26 @@ func updateShellConfig(configFile, shellType string) {
 	}
 
 	fmt.Printf("✓ Updated %s with esbuilds aliases\n", configFile)
+}
+
+func setupEnv(binaryPath string) []string {
+	// override ESBUILD_BINARY_PATH only if our cache has the binary
+	var newEnv []string
+	found := false
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "ESBUILD_BINARY_PATH=") {
+			if binaryPath != "" {
+				newEnv = append(newEnv, "ESBUILD_BINARY_PATH="+binaryPath)
+			} else {
+				newEnv = append(newEnv, e) // keep existing value if we don't have a new one
+			}
+			found = true
+		} else {
+			newEnv = append(newEnv, e)
+		}
+	}
+	if binaryPath != "" && !found {
+		newEnv = append(newEnv, "ESBUILD_BINARY_PATH="+binaryPath)
+	}
+	return newEnv
 }
