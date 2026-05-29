@@ -5,25 +5,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/fatih/color"
-	"golang.org/x/term"
 )
 
 func main() {
 	start := time.Now()
-
-	// Get terminal width
-	width, _, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		width = 80 // Fallback width
-	}
-	fmt.Println(strings.Repeat("%", width))
-
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -31,52 +21,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	pm, pmArgs := resolvePackageManager()
+	if pm == "" {	
+		if len(os.Args) > 1 {
+			fmt.Fprintf(os.Stderr, "Unknown command or package manager: %s\n", os.Args[1])
+		}
+		fmt.Fprintln(os.Stderr, "Usage: esbuilds [npm|pnpm] [args...]")
+		os.Exit(1)
+	}
+
 	esbuildRepo := filepath.Join(homeDir, "esbuild")
-	version := ""
 
-	// find nearest pnpm-lock.yaml
-	lockfilePath := ""
-	cwd, err := os.Getwd()
-	if err == nil {
-		dir := cwd
-		for {
-			p := filepath.Join(dir, "pnpm-lock.yaml")
-			if _, err := os.Stat(p); err == nil {
-				lockfilePath = p
-				break
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break // Reached filesystem root
-			}
-			dir = parent
-		}
-	}
-
-	// get esbuild version from lockfile
-	if lockfilePath != "" {
-		content, err := os.ReadFile(lockfilePath)
-		if err == nil {
-			// Find the exact package name "esbuild" avoiding things like "esbuild-plugin"
-			reEsbuild := regexp.MustCompile(`(?m)(?:^|[/\s"'])esbuild(?:[@/:\s"']|$)`)
-			loc := reEsbuild.FindStringIndex(string(content))
-			if loc != nil {
-				// Look at the next 300 characters for a semantic version (0.x.y)
-				end := loc[1] + 300
-				if end > len(content) {
-					end = len(content)
-				}
-				snippet := string(content)[loc[1]:end]
-				
-				reVersion := regexp.MustCompile(`(0\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)`)
-				vMatch := reVersion.FindStringSubmatch(snippet)
-				if len(vMatch) > 1 {
-					version = vMatch[1]
-				}
-			}
-		}
-	}
-
+	version := findAndParseNearestLockfile(pm)
 	binaryPath := ""
 	binaryWasBuilt := false
 	if version != "" {
@@ -84,10 +40,7 @@ func main() {
 
 		// check is required version is already built and cached
 		if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-			// fmt.Printf("🔧 esbuild version %s not found in cache. Building...\n", version)
-
 			if _, err := os.Stat(esbuildRepo); os.IsNotExist(err) {
-				// fmt.Printf("⚠️  esbuild repo not found at %s\n", esbuildRepo)
 				color.Red("esbuild repo not found at %s", esbuildRepo)
 				binaryPath = ""
 			} else {
@@ -101,7 +54,7 @@ func main() {
 				checkoutCmd.Dir = esbuildRepo
 				checkoutCmd.Stdout = os.Stdout
 				checkoutCmd.Stderr = os.Stderr
-				
+
 				if err := checkoutCmd.Run(); err != nil {
 					// try version without leading "v*"
 					checkoutCmd = exec.Command("git", "checkout", "-q", "-f", version)
@@ -109,7 +62,6 @@ func main() {
 					checkoutCmd.Stdout = os.Stdout
 					checkoutCmd.Stderr = os.Stderr
 					if err := checkoutCmd.Run(); err != nil {
-						// fmt.Printf( "⚠️  Failed to checkout esbuild version %s\n", version)
 						fmt.Fprintln(os.Stderr, color.RedString("Failed to checkout esbuild version %s", version))
 						binaryPath = ""
 					}
@@ -128,7 +80,6 @@ func main() {
 						buildCmd.Stdout = os.Stdout
 						buildCmd.Stderr = os.Stderr
 						if err := buildCmd.Run(); err != nil {
-							// fmt.Printf("⚠️  Failed to build esbuild %s\n", version)
 							fmt.Fprintln(os.Stderr, color.RedString("Failed to build esbuild %s", version))
 							os.Remove(tempBinary)
 							binaryPath = ""
@@ -144,7 +95,7 @@ func main() {
 		}
 	}
 
-	// override ESBUILD_BINARY_PATH only if we our cache has the binary
+	// override ESBUILD_BINARY_PATH only if our cache has the binary
 	var newEnv []string
 	found := false
 	for _, e := range os.Environ() {
@@ -163,29 +114,38 @@ func main() {
 		newEnv = append(newEnv, "ESBUILD_BINARY_PATH="+binaryPath)
 	}
 
-	// replace current process & hand everything over to pnpm using syscall.Exec (Unix-only)
-	pnpmPath, err := exec.LookPath("pnpm")
+	// replace current process & hand everything over to the package manager
+	// using syscall.Exec (Unix-only)
+	pmPath, err := exec.LookPath(pm)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "pnpm not found in PATH: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s not found in PATH: %v\n", pm, err)
 		os.Exit(1)
 	}
-	argv := append([]string{"pnpm"}, os.Args[1:]...)
-	
-	// syscall.Exec replaces the current process image with pnpm.
+	argv := append([]string{pm}, pmArgs...)
+
+	// syscall.Exec replaces the current process image with the package manager.
 	// This call only returns if there's an error.
 	elapsed := time.Since(start)
-	// fmt.Printf("🚀 Starting pnpm with esbuild version %s (took %s)\n", version, elapsed)
-	if binaryWasBuilt {
-		fmt.Printf("🚀 Starting pnpm with esbuild version %s (built & loaded in %s)\n", version, elapsed)
-	} else if version != "" {
-		fmt.Printf("🚀 Starting pnpm with esbuild version %s (cached, took %s)\n", version, elapsed)
-	} else {
-		fmt.Printf("🚀 Starting pnpm with esbuild version (default, took %s)\n", elapsed)
+	if version != "" {
+		if binaryWasBuilt {
+			fmt.Printf("🚀 Starting %s with esbuild version %s (built & loaded in %s)\n", pm, version, elapsed)
+		} else {
+			fmt.Printf("🚀 Starting %s with esbuild version %s (cached, took %s)\n", pm, version, elapsed)
+		}
 	}
-	fmt.Println(strings.Repeat("%", width))
 
-	if err := syscall.Exec(pnpmPath, argv, newEnv); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to exec pnpm: %v\n", err)
+	if err := syscall.Exec(pmPath, argv, newEnv); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to exec %s: %v\n", pm, err)
 		os.Exit(1)
 	}
+}
+
+func resolvePackageManager() (string, []string) {
+	if len(os.Args) > 1 {
+		cmd := strings.ToLower(os.Args[1])
+		if cmd == "npm" || cmd == "pnpm" {
+			return cmd, os.Args[2:]
+		}
+	}
+	return "", nil
 }
