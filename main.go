@@ -22,8 +22,9 @@ var rootCmd = &cobra.Command{
 	Short: "Run npm/pnpm with auto-managed esbuild versions",
 	Long: `esbuilds automatically builds and caches esbuild binaries based on 
 your project's lockfile, then delegates to npm or pnpm with ESBUILD_BINARY_PATH set.`,
-	RunE: loadEsbuild,
-	Args: cobra.MinimumNArgs(1),
+	RunE:               loadEsbuild,
+	Args:               cobra.MinimumNArgs(1),
+	DisableFlagParsing: true, // Pass all args to npm/pnpm
 }
 
 var initCmd = &cobra.Command{
@@ -43,5 +44,5 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

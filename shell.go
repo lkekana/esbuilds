@@ -149,7 +149,7 @@ func updateShellConfig(configFile, shellType string) {
 	}
 
 	// Open file for appending (create if doesn't exist)
-	err := appendAliases(configFile, aliases);
+	err := appendAliases(configFile, aliases)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating %s: %v\n", configFile, err)
 		return
@@ -159,28 +159,28 @@ func updateShellConfig(configFile, shellType string) {
 }
 
 func checkAliases(configFile string) (hasPnpm, hasNpm bool) {
-		file, err := os.Open(configFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error opening config file %s: %v\n", configFile, err)
-			return false, false
-		}
-		defer file.Close()
+	file, err := os.Open(configFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening config file %s: %v\n", configFile, err)
+		return false, false
+	}
+	defer file.Close()
 
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.Contains(line, `alias pnpm="esbuilds pnpm"`) {
-				hasPnpm = true
-			}
-			if strings.Contains(line, `alias npm="esbuilds npm"`) {
-				hasNpm = true
-			}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, `alias pnpm="esbuilds pnpm"`) {
+			hasPnpm = true
 		}
-		
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading config file %s: %v\n", configFile, err)
+		if strings.Contains(line, `alias npm="esbuilds npm"`) {
+			hasNpm = true
 		}
-		return hasPnpm, hasNpm
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading config file %s: %v\n", configFile, err)
+	}
+	return hasPnpm, hasNpm
 }
 
 func commandExists(cmd string) bool {
@@ -189,7 +189,7 @@ func commandExists(cmd string) bool {
 }
 
 func appendAliases(configFile string, aliases []string) error {
-		f, err := os.OpenFile(configFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(configFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening config file for writing %s: %v\n", configFile, err)
 		return err
