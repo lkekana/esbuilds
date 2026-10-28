@@ -29,7 +29,10 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 	}
 
 	esbuildRepo := filepath.Join(homeDir, "esbuild")
-	version := findAndParseNearestLockfile(pm)
+	version :=  versionFromEnv()
+	if version == "" {
+		version = findAndParseNearestLockfile(pm)
+	}
 	binaryPath := ""
 	binaryWasBuilt := false
 

@@ -62,6 +62,18 @@ var candidates = []lockfileCandidate{
 	},
 }
 
+func versionFromEnv() string {
+	version := os.Getenv("ESBUILD_VERSION")
+	if version != "" {
+		// ensure semver format (basic check)
+		reVersion := regexp.MustCompile(`^0\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$`)
+		if reVersion.MatchString(version) {
+			return version
+		}
+	}
+	return ""
+}
+
 func findAndParseNearestLockfile(pm string) string {
 	var candidate *lockfileCandidate
 	if pm == "pnpm" {
