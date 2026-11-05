@@ -38,14 +38,20 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 
 	isInstallCmd := false
 	isHelpCmd := false
+	firstCommand := ""
 	for _, arg := range pmArgs {
 		if arg == "--help" || arg == "-h" || arg == "help" {
 			isHelpCmd = true
 			break
 		}
-		if arg == "install" || arg == "i" || arg == "add" || arg == "ci" || arg == "update" || arg == "up" || arg == "upgrade" {
-			isInstallCmd = true
+		if !strings.HasPrefix(arg, "-") {
+			firstCommand = strings.ToLower(arg)
 			break
+		}
+	}
+	if firstCommand != "" {
+		if firstCommand == "install" || firstCommand == "i" || firstCommand == "add" || firstCommand == "ci" || firstCommand == "update" || firstCommand == "up" || firstCommand == "upgrade" {
+			isInstallCmd = true
 		}
 	}
 
