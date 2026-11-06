@@ -64,6 +64,9 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
+	var versions []string
+	hasEsbuild := false
+
 	if isInstallCmd {
 		// inject --ignore-scripts, so we can patch the esbuild binaries before running postinstall scripts
 		hasIgnoreScripts := false
@@ -90,7 +93,7 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 
 		print("\n")
 
-		versions, err := getEsbuildVersions(pm)
+		versions, err = getEsbuildVersions(pm)
 		// print("🔍 Discovered esbuild versions: %v\n", versions)
 		if err != nil {
 			return fmt.Errorf("failed to get esbuild versions: %w", err)
@@ -109,17 +112,23 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// patch the binaries in the virtual store
-		if err := patchEsbuildBinaries(homeDir); err != nil {
-			return fmt.Errorf("failed to patch esbuild binaries: %w", err)
+		if len(versions) == 0 {
+			hasEsbuild = false
 		}
 
-		// prevent `ERR_PNPM_IGNORED_BUILDS` during rebuild
-		// allow esbuild builds in pnpm workspace config
-		if pm == "pnpm" {
-			err = ensureEsbuildBuildAllowed()
-			if err != nil {
-				return fmt.Errorf("failed to ensure allowBuilds for esbuild: %w", err)
+		if hasEsbuild {
+			// patch the binaries in the virtual store
+			if err := patchEsbuildBinaries(homeDir); err != nil {
+				return fmt.Errorf("failed to patch esbuild binaries: %w", err)
+			}
+
+			// prevent `ERR_PNPM_IGNORED_BUILDS` during rebuild
+			// allow esbuild builds in pnpm workspace config
+			if pm == "pnpm" {
+				err = ensureEsbuildBuildAllowed()
+				if err != nil {
+					return fmt.Errorf("failed to ensure allowBuilds for esbuild: %w", err)
+				}
 			}
 		}
 
@@ -138,18 +147,22 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 
 		// sometimes the postinstall scripts will copy the cached binary to the node_modules
 		// we patch again to keep a symlink instead (save space and avoid issues with incompatible binaries)
-		// fmt.Println("🛠️  Patching again after post-install scripts...")
-		if err := patchEsbuildBinaries(homeDir); err != nil {
-			return fmt.Errorf("failed to patch esbuild binaries: %w", err)
+		if hasEsbuild {
+			// fmt.Println("🛠️  Patching again after post-install scripts...")
+			if err := patchEsbuildBinaries(homeDir); err != nil {
+				return fmt.Errorf("failed to patch esbuild binaries: %w", err)
+			}
 		}
 
 		elapsed := time.Since(start)
-		fmt.Printf("🎉 esbuild installation complete! (took %s)\n", elapsed)
+		if hasEsbuild {
+			fmt.Printf("🎉 esbuild installation complete! (took %s)\n", elapsed)
+		}
 		return nil
 	}
 
 	// For non-install commands (e.g. pnpm run dev), just patch and execute
-	if !isHelpCmd {
+	if !isHelpCmd && hasEsbuild {
 		if err := patchEsbuildBinaries(homeDir); err != nil {
 			return fmt.Errorf("failed to patch esbuild binaries: %w", err)
 		}
