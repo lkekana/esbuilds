@@ -53,6 +53,9 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 		if firstCommand == "install" || firstCommand == "i" || firstCommand == "add" || firstCommand == "ci" || firstCommand == "update" || firstCommand == "up" || firstCommand == "upgrade" {
 			isInstallCmd = true
 		}
+		if firstCommand == "rebuild" {
+			fmt.Println("[esbuilds] ⚠️  Warning: Running 'rebuild' directly may not work as expected. Please use 'install' or 'add' instead.")
+		}
 	}
 
 	newEnv := os.Environ()
@@ -78,7 +81,7 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 		}
 		runArgs := pmArgs
 		if !hasIgnoreScripts {
-			runArgs = append(runArgs, "--ignore-scripts")
+			runArgs = append(runArgs, "--ignore-scripts", "--config.strict-dep-builds=false")
 		}
 
 		installCmd := exec.Command(pmPath, runArgs...)
@@ -87,6 +90,7 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 		installCmd.Stderr = os.Stderr
 		installCmd.Env = newEnv
 
+		// fmt.Printf("🔧 Running %s %s...\n", pm, strings.Join(runArgs, " "))
 		if err := installCmd.Run(); err != nil {
 			return fmt.Errorf("package manager install failed: %w", err)
 		}
@@ -94,7 +98,7 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 		print("\n")
 
 		versions, err = getEsbuildVersions(pm)
-		// print("🔍 Discovered esbuild versions: %v\n", versions)
+		// fmt.Printf("🔍 Discovered esbuild versions: %v\n", versions)
 		if err != nil {
 			return fmt.Errorf("failed to get esbuild versions: %w", err)
 		} else {
@@ -112,15 +116,21 @@ func loadEsbuild(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if len(versions) == 0 {
-			hasEsbuild = false
+		// fmt.Printf("🔍 Discovered esbuild versions: %v\n", versions)
+		// fmt.Printf("len(versions): %d\n", len(versions))
+		if len(versions) > 0 {
+			// fmt.Println("⚠️  No esbuild versions found in node_modules, skipping patching.")
+			hasEsbuild = true
 		}
+
+		// fmt.Printf("hasEsbuild: %v\n", hasEsbuild)
 
 		if hasEsbuild {
 			// patch the binaries in the virtual store
 			if err := patchEsbuildBinaries(homeDir); err != nil {
 				return fmt.Errorf("failed to patch esbuild binaries: %w", err)
 			}
+			// fmt.Println("✅ Patched esbuild binaries in node_modules")
 
 			// prevent `ERR_PNPM_IGNORED_BUILDS` during rebuild
 			// allow esbuild builds in pnpm workspace config
